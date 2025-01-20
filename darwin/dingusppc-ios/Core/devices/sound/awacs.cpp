@@ -42,8 +42,8 @@ AwacsBase::AwacsBase(std::string name) {
     this->name = name;
 
     // connect to SoundServer
-    // this->snd_server = dynamic_cast<SoundServer *>
-        // (gMachineObj->get_comp_by_name("SoundServer"));
+    this->snd_server = dynamic_cast<SoundServer *>
+        (gMachineObj->get_comp_by_name("SoundServer"));
     this->out_stream_ready = false;
 }
 
@@ -63,27 +63,33 @@ void AwacsBase::dma_out_start() {
         reopen = true;
 
     if (reopen) {
-        // snd_server->close_out_stream();
-        return;
+        snd_server->close_out_stream();
         this->out_stream_ready   = false;
         this->out_stream_running = false;
     }
 
     if (!this->out_stream_ready) {
-        // if ((err = this->snd_server->open_out_stream(this->cur_sample_rate, this->dma_out_ch))) {
-            // LOG_F(ERROR, "%s: unable to open sound output stream: %d",
-                  // this->name.c_str(), err);
-        return;
-        // }
+        if ((err = this->snd_server->open_out_stream(this->cur_sample_rate, this->dma_out_ch))) {
+            LOG_F(ERROR, "%s: unable to open sound output stream: %d",
+                  this->name.c_str(), err);
+            return;
+        }
 
         this->out_sample_rate  = this->cur_sample_rate;
         this->out_stream_ready = true;
+    }
+
+    if (!this->out_stream_running) {
+        if ((err = snd_server->start_out_stream())) {
+            LOG_F(ERROR, "%s: could not start sound output stream: %d",
+                  this->name.c_str(), err);
+        }
     }
 }
 
 void AwacsBase::dma_out_stop() {
     if (this->out_stream_ready) {
-        // snd_server->close_out_stream();
+        snd_server->close_out_stream();
         this->out_stream_ready   = false;
         this->out_stream_running = false;
     }

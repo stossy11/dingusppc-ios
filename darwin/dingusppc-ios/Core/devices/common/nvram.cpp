@@ -97,6 +97,7 @@ void NVram::save() {
         LOG_F(INFO, "Skipping NVRAM write to \"%s\" in deterministic mode", this->file_name.c_str());
         return;
     }
+    
     const char* documentsDirCStr = getDocumentsDirectory();
     std::string documentsPath(documentsDirCStr);
 

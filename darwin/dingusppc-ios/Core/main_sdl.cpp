@@ -34,6 +34,7 @@ bool init() {
     
     SDL_SetMainReady();
     SDL_iPhoneSetEventPump(SDL_TRUE);
+    SDL_SetHint(SDL_HINT_TOUCH_MOUSE_EVENTS, "0");
     
     if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_GAMECONTROLLER)) {
         LOG_F(ERROR, "SDL_Init error: %s", SDL_GetError());

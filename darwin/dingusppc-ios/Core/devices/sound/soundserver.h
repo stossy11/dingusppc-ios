@@ -17,9 +17,9 @@ GNU General Public License for more details.
 
 You should have received a copy of the GNU General Public License
 along with this program.  If not, see <https://www.gnu.org/licenses/>.
+*/
 
-
-@file Sound server definitions.
+/** @file Sound server definitions.
 
     This class manages host audio HW. It's directly connected
     to a sound abstraction API (libsoundio in our case).
@@ -29,7 +29,7 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>.
     sound HW.
 
     Emulated sound HW only need to process sound streams.
-
+ */
 
 #ifndef SOUND_SERVER_H
 #define SOUND_SERVER_H
@@ -56,5 +56,4 @@ private:
     std::unique_ptr<Impl> impl;
 };
 
-#endif SOUND_SERVER_H
-*/
+#endif /* SOUND_SERVER_H */

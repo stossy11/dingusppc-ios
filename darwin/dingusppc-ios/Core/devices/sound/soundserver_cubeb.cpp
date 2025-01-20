@@ -17,6 +17,7 @@ GNU General Public License for more details.
 
 You should have received a copy of the GNU General Public License
 along with this program.  If not, see <https://www.gnu.org/licenses/>.
+*/
 
 #ifndef NOMINMAX
 #define NOMINMAX
@@ -30,11 +31,16 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 #include <algorithm>
 #include <functional>
-#include "loguru.hpp"
-#include "cubeb/cubeb.h"
+#include <loguru.hpp>
 #ifdef _WIN32
 #include <objbase.h>
 #endif
+
+#ifdef __APPLE__
+#include <TargetConditionals.h>
+#endif
+
+
 
 typedef enum {
     SND_SERVER_DOWN = 0,
@@ -47,8 +53,6 @@ typedef enum {
 class SoundServer::Impl {
 public:
     Status status = SND_SERVER_DOWN;
-    cubeb *cubeb_ctx;
-    cubeb_stream *out_stream;
 
     uint32_t deterministic_poll_timer = 0;
     std::function<void()> deterministic_poll_cb;
@@ -75,14 +79,6 @@ int SoundServer::start()
 
     impl->status = SND_SERVER_DOWN;
 
-    res = cubeb_init(&impl->cubeb_ctx, "Dingus sound server");
-    if (res != CUBEB_OK) {
-        LOG_F(ERROR, "Could not initialize Cubeb library");
-        return -1;
-    }
-
-    LOG_F(INFO, "Connected to backend: %s", cubeb_get_backend_id(impl->cubeb_ctx));
-
     impl->status = SND_API_READY;
 
     return 0;
@@ -93,13 +89,12 @@ void SoundServer::shutdown()
     switch (impl->status) {
     case SND_STREAM_OPENED:
         close_out_stream();
-        fall through
+        /* fall through */
     case SND_STREAM_CLOSED:
-        /fall through
+        /* fall through */
     case SND_SERVER_UP:
-        fall through
+        /* fall through */
     case SND_API_READY:
-        cubeb_destroy(impl->cubeb_ctx);
         break;
     case SND_SERVER_DOWN:
         // Nothing to do.
@@ -111,59 +106,14 @@ void SoundServer::shutdown()
     LOG_F(INFO, "Sound Server shut down.");
 }
 
-long sound_out_callback(cubeb_stream *stream, void *user_data, void *output_buffer, long req_frames) {
-    uint8_t *p_in;
-    int16_t *in_buf, *out_buf;
-    uint32_t got_len;
-    long frames, out_frames;
-    DmaOutChannel *dma_ch = (DmaOutChannel *)user_data; // Ensure proper casting
-
-    if (!dma_ch->is_out_active()) {
-        return 0; // Return 0 frames if output is inactive
-    }
-
-    out_buf = (int16_t *)output_buffer;
-    out_frames = 0;
-
-    while (req_frames > 0) {
-        // Pull data from the DMA channel
-        if (!dma_ch->pull_data((uint32_t)req_frames << 2, &got_len, &p_in)) {
-            if ((in_buf = (int16_t *)p_in)) {
-                frames = got_len >> 2; // Calculate number of frames
-
-                // Process and copy the frames
-                for (long i = 0; i < frames; i++) {
-                    out_buf[0] = BYTESWAP_16(in_buf[0]);
-                    out_buf[1] = BYTESWAP_16(in_buf[1]);
-                    in_buf += 2;
-                    out_buf += 2;
-                }
-
-                req_frames -= frames;  // Decrease remaining frames
-                out_frames += frames; // Increment output frames
-            } else {
-                LOG_F(ERROR, "Didn't get qdata");
-            }
-        } else {
-            break; // Exit loop if no more data is available
-        }
-    }
-
-    return out_frames; // Return the total number of frames written
-}
-
-
-static void status_callback(cubeb_stream *stream, void *user_data, cubeb_state state)
-{
-    LOG_F(9, "Cubeb status callback fired, status = %d", state);
-}
-
 int SoundServer::open_out_stream(uint32_t sample_rate, DmaOutChannel *dma_ch)
 {
+#if !TARGET_OS_IOS
     if (is_deterministic) {
+#endif
         impl->deterministic_poll_cb = [dma_ch] {
             if (!dma_ch->is_out_active()) {
-               return;
+                return;
             }
             // Drain the DMA buffer, but don't do anything else.
             int req_size = std::max(dma_ch->get_pull_data_remaining(), 1024);
@@ -181,60 +131,40 @@ int SoundServer::open_out_stream(uint32_t sample_rate, DmaOutChannel *dma_ch)
         impl->status = SND_STREAM_OPENED;
         LOG_F(9, "Deterministic sound output callback set up.");
         return 0;
+#if !TARGET_OS_IOS
     }
-    int res;
-    uint32_t latency_frames;
-    cubeb_stream_params params;
-
-    params.format = CUBEB_SAMPLE_S16NE;
-    params.rate = sample_rate;
-    params.channels = 2;
-
-    // res = cubeb_get_min_latency(impl->cubeb_ctx, &params, &latency_frames);
-    if (res != CUBEB_OK) {
-        LOG_F(ERROR, "Could not get minimum latency, error: %d", res);
-        return -1;
-    } else {
-        LOG_F(9, "Minimum sound latency: %d frames", latency_frames);
-    }
-
-    res = cubeb_stream_init(impl->cubeb_ctx,
-                                &impl->out_stream,
-                                "SndOut stream",
-                                params,            // Correctly pass the params struct
-                                latency_frames,    // Specify latency
-                                sound_out_callback,
-                                status_callback,
-                                dma_ch);
-
-    LOG_F(9, "Sound output stream opened.");
+#endif
 
     impl->status = SND_STREAM_OPENED;
 
-    return 0;
+    return -1;
 }
 
 int SoundServer::start_out_stream()
 {
+    
+#if !TARGET_OS_IOS
     if (is_deterministic) {
+#endif
         LOG_F(9, "Starting sound output deterministic polling.");
         impl->deterministic_poll_timer = TimerManager::get_instance()->add_cyclic_timer(MSECS_TO_NSECS(10), impl->deterministic_poll_cb);
         return 0;
+#if !TARGET_OS_IOS
     }
-    return cubeb_stream_start(impl->out_stream);
+#endif
+    return -1;
 }
 
 void SoundServer::close_out_stream()
 {
+#if !TARGET_OS_IOS
     if (is_deterministic) {
+#endif
         LOG_F(9, "Stopping sound output deterministic polling.");
         TimerManager::get_instance()->cancel_timer(impl->deterministic_poll_timer);
         impl->status = SND_STREAM_CLOSED;
         return;
+#if !TARGET_OS_IOS
     }
-    cubeb_stream_stop(impl->out_stream);
-    cubeb_stream_destroy(impl->out_stream);
-    impl->status = SND_STREAM_CLOSED;
-    LOG_F(9, "Sound output stream closed.");
+#endif
 }
-*/

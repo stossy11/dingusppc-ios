@@ -25,15 +25,23 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>.
 #include "devices/common/adb/adbkeyboard.h"
 #include "loguru.hpp"
 #include <SDL2/SDL.h>
+#include <unordered_map>
+#include <chrono>
 
 EventManager* EventManager::event_manager;
 
 static int get_sdl_event_key_code(const SDL_KeyboardEvent &event);
 static void toggle_mouse_grab(const SDL_KeyboardEvent &event);
 
+
+
+
 void EventManager::poll_events()
 {
     SDL_Event event;
+    static Uint32 last_touch_time = 0; // Timestamp of the last touch event
+    static const Uint32 DOUBLE_CLICK_INTERVAL = 300; // Time interval for double-click in milliseconds
+    
 
     while (SDL_PollEvent(&event)) {
         events_captured++;
@@ -90,6 +98,8 @@ void EventManager::poll_events()
                         ke.flags = SDL_GetModState() & KMOD_CAPS ?
                             KEYBOARD_EVENT_DOWN : KEYBOARD_EVENT_UP;
                     }
+                    
+                    LOG_F(INFO, "Key %x pressed", event.key.keysym.sym);
                     this->_keyboard_signal.emit(ke);
                 } else {
                     LOG_F(WARNING, "Unknown key %x pressed", event.key.keysym.sym);
@@ -141,6 +151,73 @@ void EventManager::poll_events()
                 this->_mouse_signal.emit(me);
             }
             break;
+                
+
+            case SDL_FINGERDOWN: {
+                MouseEvent me;
+                Uint32 current_time = SDL_GetTicks();
+                
+                int window_width = 0, window_height = 0;
+                SDL_GetWindowSize(SDL_GetWindowFromID(event.tfinger.windowID), &window_width, &window_height);
+
+                // Convert normalized to absolute coordinates
+                int x = static_cast<int>(event.tfinger.x * window_width);
+                int y = static_cast<int>(event.tfinger.y * window_height);
+
+                // Emit left-click on double-tap
+                if (current_time - last_touch_time <= DOUBLE_CLICK_INTERVAL) {
+                    me.buttons_state = (this->buttons_state |= (1 << 0)); // Left button is ADB button 0
+                    me.xabs = x;
+                    me.yabs = y;
+                    me.flags = MOUSE_EVENT_BUTTON;
+                    this->_mouse_signal.emit(me);
+                }
+                
+                
+                last_touch_time = current_time;
+                break;
+            }
+
+            case SDL_FINGERUP: {
+                int window_width = 0, window_height = 0;
+                SDL_GetWindowSize(SDL_GetWindowFromID(event.tfinger.windowID), &window_width, &window_height);
+
+                // Convert normalized to absolute coordinates
+                int x = static_cast<int>(event.tfinger.x * window_width);
+                int y = static_cast<int>(event.tfinger.y * window_height);
+
+                MouseEvent me;
+                me.buttons_state = (this->buttons_state &= ~(1 << 0)); // Clear left button
+                me.xabs = x;
+                me.yabs = y;
+                me.flags = MOUSE_EVENT_BUTTON;
+                this->_mouse_signal.emit(me);
+                break;
+            }
+
+            case SDL_FINGERMOTION: {
+                int window_width = 0, window_height = 0;
+                SDL_GetWindowSize(SDL_GetWindowFromID(event.tfinger.windowID), &window_width, &window_height);
+
+                // Convert normalized to absolute coordinates
+                int x = static_cast<int>(event.tfinger.x * window_width);
+                int y = static_cast<int>(event.tfinger.y * window_height);
+
+                // Calculate relative motion in pixels
+                int dx = static_cast<int>(event.tfinger.dx * window_width);
+                int dy = static_cast<int>(event.tfinger.dy * window_height);
+
+                MouseEvent me;
+                me.xrel = dx;
+                me.yrel = dy;
+                me.xabs = x;
+                me.yabs = y;
+                me.flags = MOUSE_EVENT_MOTION;
+                this->_mouse_signal.emit(me);
+                break;
+            }
+        
+
 
         case SDL_CONTROLLERBUTTONDOWN: {
                 GamepadEvent ge;

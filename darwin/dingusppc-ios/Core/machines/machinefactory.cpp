@@ -503,7 +503,7 @@ int MachineFactory::create(string& mach_id)
     gMachineObj.reset(new MachineBase(it->second.name));
 
     // create and register sound server
-    // gMachineObj->add_device("SoundServer", std::unique_ptr<SoundServer>(new SoundServer()));
+     gMachineObj->add_device("SoundServer", std::unique_ptr<SoundServer>(new SoundServer()));
 
     // recursively create device objects
     for (auto& dev_name : it->second.devices) {

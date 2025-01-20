@@ -48,15 +48,15 @@ enum DeviceClass {
 
     static std::unique_ptr<HWComponent> create() {
 #ifdef ABSOLUTE
-        uint8_t  device_class = TABLET;
-        int      num_buttons = 3;
-        int      num_bits = 16;
-        uint16_t resolution = 72;
-#else
         uint8_t  device_class = MOUSE;
         int      num_buttons = 3;
         int      num_bits = 10;
         uint16_t resolution = 300;
+#else
+        uint8_t  device_class = TABLET;
+        int      num_buttons = 3;
+        int      num_bits = 16;
+        uint16_t resolution = 72;
 #endif
         return std::unique_ptr<AdbMouse>(
             new AdbMouse("ADB-MOUSE", device_class, num_buttons, num_bits, resolution));
